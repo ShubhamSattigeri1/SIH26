@@ -1,0 +1,20 @@
+# Dependencies
+node_modules/
+venv/
+env/
+
+# Build & Bundles
+.expo/
+dist/
+expo_build.log
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+
+# System & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

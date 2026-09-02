@@ -1,0 +1,145 @@
+{
+  "dataset_summary": {
+    "total_farms": 50,
+    "active_farms": 44,
+    "seasonal_farms": 6,
+    "total_cattle": 2352,
+    "total_buffalo": 635,
+    "total_animals": 2987,
+    "average_daily_milk_litres_per_farm": 542.51,
+    "total_monthly_milk_output_litres": 813759.0,
+    "total_monthly_revenue_inr": 8982000.0,
+    "average_monthly_revenue_inr_per_farm": 179640.0,
+    "average_farm_size_acres": 4.97,
+    "average_employees_per_farm": 4.58
+  },
+  "farm_type_distribution": {
+    "Small Dairy Farm": 16,
+    "Medium Dairy Farm": 15,
+    "A2 Dairy Farm": 10,
+    "Family Dairy Farm": 9
+  },
+  "status_distribution": {
+    "Active": 44,
+    "Seasonal": 6
+  },
+  "location_area_distribution": {
+    "Tathawade": 2,
+    "Wakad": 2,
+    "Hinjewadi": 2,
+    "Ravet": 2,
+    "Punawale": 2,
+    "Kiwale": 2,
+    "Thergaon": 2,
+    "Pimpri": 2,
+    "Chinchwad": 2,
+    "Bhosari": 2
+  },
+  "main_breed_distribution": {
+    "Gir & Sahiwal": 18,
+    "HF Cross & Jersey": 8,
+    "Jersey Cross": 8,
+    "Sahiwal": 6,
+    "HF Cross": 5,
+    "Gir": 5
+  },
+  "products_distribution": {
+    "Milk & buttermilk": 11,
+    "A2 cow milk": 10,
+    "Milk, curd & ghee": 8,
+    "Cow milk & curd": 8,
+    "Fresh milk & paneer": 7,
+    "Fresh cow milk": 6
+  },
+  "top_farms_by_revenue": [
+    {
+      "farm_id": "DFP1027",
+      "farm_name": "Anand Dairy Farm",
+      "location_area": "Chakan",
+      "monthly_revenue_inr": 259000.0,
+      "monthly_milk_output_litres": 14031.0,
+      "total_animals": 53
+    },
+    {
+      "farm_id": "DFP1048",
+      "farm_name": "Mane Dairy Farm",
+      "location_area": "Kharadi",
+      "monthly_revenue_inr": 259000.0,
+      "monthly_milk_output_litres": 19557.0,
+      "total_animals": 86
+    },
+    {
+      "farm_id": "DFP1024",
+      "farm_name": "Sai A2 Dairy Farm",
+      "location_area": "Vadgaon Sheri",
+      "monthly_revenue_inr": 258000.0,
+      "monthly_milk_output_litres": 21912.0,
+      "total_animals": 66
+    },
+    {
+      "farm_id": "DFP1005",
+      "farm_name": "Samarth Dairy Farm",
+      "location_area": "Punawale",
+      "monthly_revenue_inr": 252000.0,
+      "monthly_milk_output_litres": 14373.0,
+      "total_animals": 65
+    },
+    {
+      "farm_id": "DFP1028",
+      "farm_name": "Yash Dairy Farm",
+      "location_area": "Manjri",
+      "monthly_revenue_inr": 252000.0,
+      "monthly_milk_output_litres": 8610.0,
+      "total_animals": 29
+    }
+  ],
+  "top_farms_by_daily_milk": [
+    {
+      "farm_id": "DFP1015",
+      "farm_name": "Morya Dairy Farm",
+      "location_area": "Baner",
+      "estimated_daily_milk_litres": 982.0,
+      "monthly_milk_output_litres": 29460.0,
+      "main_breed": "Gir & Sahiwal"
+    },
+    {
+      "farm_id": "DFP1026",
+      "farm_name": "Navnath Dairy Farm",
+      "location_area": "Sus",
+      "estimated_daily_milk_litres": 975.3,
+      "monthly_milk_output_litres": 29259.0,
+      "main_breed": "HF Cross & Jersey"
+    },
+    {
+      "farm_id": "DFP1022",
+      "farm_name": "Siddhivinayak Dairy Farm",
+      "location_area": "Hingne Khurd",
+      "estimated_daily_milk_litres": 944.0,
+      "monthly_milk_output_litres": 28320.0,
+      "main_breed": "Jersey Cross"
+    },
+    {
+      "farm_id": "DFP1043",
+      "farm_name": "Chavan Dairy Farm",
+      "location_area": "Wagholi",
+      "estimated_daily_milk_litres": 889.2,
+      "monthly_milk_output_litres": 26676.0,
+      "main_breed": "Jersey Cross"
+    },
+    {
+      "farm_id": "DFP1041",
+      "farm_name": "Deshmukh Dairy Farm",
+      "location_area": "Dhayari",
+      "estimated_daily_milk_litres": 888.7,
+      "monthly_milk_output_litres": 26661.0,
+      "main_breed": "Gir & Sahiwal"
+    }
+  ],
+  "market_insights": {
+    "dominant_business_model": "Small Dairy Farm",
+    "top_breed": "Gir & Sahiwal",
+    "most_common_area": "Tathawade",
+    "average_milk_per_animal_daily_litres": 9.08,
+    "average_revenue_per_animal_inr": 3007.03
+  }
+}

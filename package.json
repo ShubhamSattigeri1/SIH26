@@ -1,0 +1,23 @@
+{
+  "name": "gramadvisory-ai-mobile",
+  "version": "1.0.0",
+  "private": true,
+  "main": "node_modules/expo/AppEntry.js",
+  "scripts": {
+    "start": "set EXPO_NO_CACHE=1&& expo start --clear",
+    "android": "set EXPO_NO_CACHE=1&& expo start --android --clear",
+    "ios": "set EXPO_NO_CACHE=1&& expo start --ios --clear",
+    "web": "set EXPO_NO_CACHE=1&& expo start --web --clear"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~3.2.3",
+    "expo": "~51.0.0",
+    "expo-file-system": "~17.0.0",
+    "expo-location": "~17.0.0",
+    "expo-notifications": "~0.28.0",
+    "react": "18.2.0",
+    "react-dom": "18.2.0",
+    "react-native": "0.74.1",
+    "react-native-web": "~0.19.10"
+  }
+}

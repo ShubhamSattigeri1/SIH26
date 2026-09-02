@@ -1,0 +1,15 @@
+{
+  "expo": {
+    "name": "GramAdvisory AI",
+    "slug": "gramadvisory-ai",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "package": "com.gramadvisory.ai"
+    }
+  }
+}
