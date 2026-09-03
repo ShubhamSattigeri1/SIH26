@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Platform,
   SafeAreaView,
   ScrollView,
@@ -15,6 +16,7 @@ import {
 import * as FileSystem from 'expo-file-system';
 import * as Location from 'expo-location';
 import * as Notifications from 'expo-notifications';
+import { Video, ResizeMode } from 'expo-av';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import FinCompassDashboard from './FinCompassDashboard';
 
@@ -47,28 +49,28 @@ const themes = {
     shadow: 'rgba(17, 94, 89, 0.06)',
   },
   dark: {
-    primary: '#2DD4BF',         // Glowing mint teal
-    primaryLight: '#115E59',    // Deep forest base background
-    secondary: '#14B8A6',       // Vibrant secondary teal
-    accent: '#F59E0B',          // Vibrant turmeric
-    accentLight: '#451A03',     // Dark warm brown-amber
-    background: '#121615',      // "Warm Dusk" deep background
-    surface: '#1A1F1E',         // Deep warm surface card
-    surfaceElevated: '#242D2C', // Slightly elevated surface card
-    textPrimary: '#F1F5F9',     // Off-white
-    textSecondary: '#CBD5E1',   // Soft grey secondary text
-    textMuted: '#64748B',       // Muted slate
-    border: '#2A3331',          // Dusk borders
-    success: '#34D399',         // Minty success green
-    successBg: '#064E3B',
-    successBorder: '#065F46',
-    warning: '#F59E0B',         // Golden warning
-    warningBg: '#451A03',
-    warningBorder: '#78350F',
-    danger: '#F87171',          // Bright coral danger
-    dangerBg: '#7F1D1D',
-    dangerBorder: '#991B1B',
-    shadow: 'rgba(0, 0, 0, 0.3)',
+    primary: '#22D3EE',
+    primaryLight: '#102A3B',
+    secondary: '#F472B6',
+    accent: '#A3E635',
+    accentLight: '#283B16',
+    background: '#05070D',
+    surface: 'rgba(8, 13, 24, 0.94)',
+    surfaceElevated: '#101827',
+    textPrimary: '#F4F7FB',
+    textSecondary: '#A9B7C9',
+    textMuted: '#718096',
+    border: '#1D3950',
+    success: '#A3E635',
+    successBg: '#1A2C15',
+    successBorder: '#476E22',
+    warning: '#FBBF24',
+    warningBg: '#352A0D',
+    warningBorder: '#725A1A',
+    danger: '#FB7185',
+    dangerBg: '#351421',
+    dangerBorder: '#7F2940',
+    shadow: 'rgba(0, 0, 0, 0.55)',
   }
 };
 
@@ -491,6 +493,7 @@ function GramAdvisoryApp() {
   
   // Slide-in auto-dismissing Toast Notification system (Screen 1 Feature)
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
+  const swotAnimation = useRef(new Animated.Value(0)).current;
 
   const activeTheme = themes[themeMode];
 
@@ -506,6 +509,13 @@ function GramAdvisoryApp() {
       return () => clearTimeout(timer);
     }
   }, [toast.visible]);
+
+  useEffect(() => {
+    if (result) {
+      swotAnimation.setValue(0);
+      Animated.spring(swotAnimation, { toValue: 1, friction: 8, tension: 55, useNativeDriver: true }).start();
+    }
+  }, [result, swotAnimation]);
 
   useEffect(() => {
     (async () => {
@@ -690,9 +700,22 @@ function GramAdvisoryApp() {
   const structuring = roadmap?.financial_structuring || {};
   const scheme = roadmap?.scheme_auto_selection || {};
   const repayment = roadmap?.emi_moratorium_generator || {};
+  const swot = feasibility.business_analysis || {};
+  const swotTypes = ['Strengths', 'Weaknesses', 'Opportunities', 'Threats'];
 
   return (
-    <SafeAreaView style={[styles.safeArea, { backgroundColor: activeTheme.background }]}>
+    <SafeAreaView style={styles.safeArea}>
+      <View style={[styles.backgroundBase, { backgroundColor: activeTheme.background }]} pointerEvents="none" />
+      <Video
+        source={{ uri: 'https://cdn.coverr.co/videos/coverr-neon-city-at-night-1573/1080p.mp4' }}
+        style={styles.backgroundVideo}
+        isMuted
+        shouldPlay
+        isLooping
+        resizeMode={ResizeMode.COVER}
+        useNativeControls={false}
+      />
+      <View style={styles.backgroundVideoShade} pointerEvents="none" />
       {/* ==========================================
           HEADER WITH VISIBLE TOGGLES
           ========================================== */}
@@ -1312,8 +1335,9 @@ function GramAdvisoryApp() {
 
               <Text style={[styles.subHeading, { color: activeTheme.textPrimary }]}>{lang === 'en' ? 'Competitive Advantage Tactics' : 'प्रतिस्पर्धात्मक बढ़त रणनीतियाँ'}</Text>
               {(() => {
-                const tactics = lang === 'en' ? feasibility.competitor_mapping?.competitive_advantage_tactics_en : feasibility.competitor_mapping?.competitive_advantage_tactics_hi;
-                return tactics?.map((tactic, i) => (
+                const competitorMapping = feasibility.competitor_mapping || {};
+                const tactics = competitorMapping[`competitive_advantage_tactics_${lang}`] || competitorMapping.competitive_advantage_tactics || [];
+                return tactics.map((tactic, i) => (
                   <View key={i} style={styles.bulletRow}>
                     <View style={[styles.bulletIconCircle, { backgroundColor: activeTheme.primary }]}>
                       <Feather name="target" size={10} color="#FFF" />
@@ -1327,9 +1351,13 @@ function GramAdvisoryApp() {
             {/* SCREEN 8: SWOT ANALYSIS (2x2 RESPONISIVE GRID) */}
             <View style={[styles.reportSection, { backgroundColor: activeTheme.surface, borderColor: activeTheme.border }]}>
               <Text style={[styles.sectionHeaderTitle, { color: activeTheme.textPrimary }]}>📊 {t[lang].swotHeader}</Text>
-              <View style={[styles.swotGrid, isTablet && styles.swotGridRow]}>
-                {['Strengths', 'Weaknesses', 'Opportunities', 'Threats'].map((type) => {
-                  const finalItems = feasibility.business_analysis?.[`${type.toLowerCase()}_${lang}`] || [];
+              <Animated.View style={[styles.swotGrid, isTablet && styles.swotGridRow, {
+                opacity: swotAnimation,
+                transform: [{ translateY: swotAnimation.interpolate({ inputRange: [0, 1], outputRange: [18, 0] }) }],
+              }]}>
+                {swotTypes.map((type) => {
+                  const key = type.toLowerCase();
+                  const finalItems = swot[`${key}_${lang}`] || swot[key] || [];
                   const swatch = SWATCH[type] || '#F8FAFC';
                   const swatchBorder = SWATCH[`${type}Border`] || '#E2E8F0';
                   return (
@@ -1345,7 +1373,7 @@ function GramAdvisoryApp() {
                     </View>
                   );
                 })}
-              </View>
+              </Animated.View>
             </View>
 
             {/* SCREEN 9: PRODUCT MARKET VALUE & WAGE AFFORDABILITY */}
@@ -1384,29 +1412,105 @@ function GramAdvisoryApp() {
   );
 }
 
+function LoginScreen({ onLogin }) {
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+
+  const handleLogin = () => {
+    if (username === 'Test01' && password === 'Test01') {
+      setError('');
+      onLogin();
+      return;
+    }
+    setError('Access denied. Check your operator credentials.');
+  };
+
+  return (
+    <SafeAreaView style={styles.loginSafeArea}>
+      <View style={styles.loginGlow} pointerEvents="none" />
+      <View style={styles.loginGrid} pointerEvents="none" />
+      <View style={styles.loginPanel}>
+        <View style={styles.loginMark}>
+          <Feather name="command" size={24} color="#22D3EE" />
+        </View>
+        <Text style={styles.loginKicker}>GRAMADVISORY AI // SECURE NODE</Text>
+        <Text style={styles.loginTitle}>Enter the grid.</Text>
+        <Text style={styles.loginSubtitle}>Sign in to access your enterprise intelligence dashboard.</Text>
+
+        <Text style={styles.loginLabel}>OPERATOR ID</Text>
+        <TextInput
+          style={styles.loginInput}
+          value={username}
+          onChangeText={setUsername}
+          placeholder="Enter username"
+          placeholderTextColor="#5D7185"
+          autoCapitalize="none"
+        />
+        <Text style={styles.loginLabel}>ACCESS KEY</Text>
+        <TextInput
+          style={styles.loginInput}
+          value={password}
+          onChangeText={setPassword}
+          placeholder="Enter password"
+          placeholderTextColor="#5D7185"
+          secureTextEntry
+          onSubmitEditing={handleLogin}
+        />
+
+        {!!error && <Text style={styles.loginError}>{error}</Text>}
+        <TouchableOpacity style={styles.loginButton} onPress={handleLogin} activeOpacity={0.85}>
+          <Text style={styles.loginButtonText}>INITIALIZE DASHBOARD</Text>
+          <Feather name="arrow-right" size={17} color="#05070D" />
+        </TouchableOpacity>
+        <Text style={styles.loginStatus}><Text style={styles.loginStatusDot}>●</Text> LOCAL AUTHENTICATION ACTIVE</Text>
+      </View>
+    </SafeAreaView>
+  );
+}
+
 export default function App() {
-  return <GramAdvisoryApp />;
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  return isAuthenticated ? <GramAdvisoryApp /> : <LoginScreen onLogin={() => setIsAuthenticated(true)} />;
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1 },
-  container: { padding: 16, paddingBottom: 60 },
+  safeArea: { flex: 1, backgroundColor: 'transparent' },
+  loginSafeArea: { flex: 1, backgroundColor: '#05070D', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  loginGlow: { position: 'absolute', width: 420, height: 420, borderRadius: 210, backgroundColor: '#0D3348', opacity: 0.32, transform: [{ translateY: -120 }] },
+  loginGrid: { ...StyleSheet.absoluteFillObject, borderWidth: 1, borderColor: '#12314A', opacity: 0.28 },
+  loginPanel: { width: '100%', maxWidth: 430, padding: 28, backgroundColor: '#080D18', borderWidth: 1, borderColor: '#1D5268', borderRadius: 6, shadowColor: '#22D3EE', shadowOpacity: 0.18, shadowRadius: 28, shadowOffset: { width: 0, height: 0 } },
+  loginMark: { width: 48, height: 48, borderWidth: 1, borderColor: '#22D3EE', backgroundColor: '#102A3B', justifyContent: 'center', alignItems: 'center', marginBottom: 22 },
+  loginKicker: { color: '#A3E635', fontSize: 10, fontWeight: '800', letterSpacing: 1.5 },
+  loginTitle: { color: '#F4F7FB', fontSize: 34, fontWeight: '900', marginTop: 10 },
+  loginSubtitle: { color: '#91A6B9', fontSize: 13, lineHeight: 20, marginTop: 8, marginBottom: 28 },
+  loginLabel: { color: '#7EA0B7', fontSize: 10, fontWeight: '900', letterSpacing: 1.2, marginBottom: 7, marginTop: 13 },
+  loginInput: { height: 48, borderWidth: 1, borderColor: '#21445A', backgroundColor: '#050A13', color: '#F4F7FB', paddingHorizontal: 14, fontSize: 14, borderRadius: 3 },
+  loginError: { color: '#FB7185', fontSize: 11, fontWeight: '700', marginTop: 14 },
+  loginButton: { height: 50, backgroundColor: '#A3E635', marginTop: 24, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderRadius: 3 },
+  loginButtonText: { color: '#05070D', fontSize: 12, fontWeight: '900', letterSpacing: 0.8 },
+  loginStatus: { color: '#5D7185', fontSize: 9, fontWeight: '800', letterSpacing: 1.1, marginTop: 22 },
+  loginStatusDot: { color: '#A3E635' },
+  backgroundBase: { ...StyleSheet.absoluteFillObject },
+  backgroundVideo: { ...StyleSheet.absoluteFillObject, opacity: 0.38 },
+  backgroundVideoShade: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(3, 6, 13, 0.78)' },
+  container: { padding: 20, paddingBottom: 60, maxWidth: 920, width: '100%', alignSelf: 'center' },
   headerBar: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
     borderBottomWidth: 1,
     elevation: 2,
     shadowColor: '#000',
     shadowOpacity: 0.05,
-    shadowRadius: 5,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
   },
   headerTitleBox: { flex: 1, marginRight: 10 },
-  headerBrand: { fontSize: 20, fontWeight: '900', letterSpacing: -0.5 },
-  headerSubtitle: { fontSize: 9, fontWeight: '600', marginTop: 1 },
+  headerBrand: { fontSize: 21, fontWeight: '800', letterSpacing: -0.4 },
+  headerSubtitle: { fontSize: 10, fontWeight: '600', marginTop: 3, letterSpacing: 0.5 },
   togglesRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   themeToggleBtn: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center' },
   langToggleBox: { flexDirection: 'row', borderRadius: 20, padding: 3, borderWidth: 1 },
@@ -1414,12 +1518,12 @@ const styles = StyleSheet.create({
   langBtnText: { fontSize: 10, fontWeight: '800' },
 
   card: {
-    borderRadius: 20,
-    padding: 18,
+    borderRadius: 6,
+    padding: 22,
     marginBottom: 16,
     borderWidth: 1,
     shadowOpacity: 0.03,
-    shadowRadius: 10,
+    shadowRadius: 16,
     shadowOffset: { width: 0, height: 4 },
   },
   progressContainer: { marginBottom: 20, position: 'relative' },
@@ -1440,19 +1544,19 @@ const styles = StyleSheet.create({
   stepLabelText: { fontSize: 9, fontWeight: '800', marginTop: 4, textAlign: 'center' },
 
   stepWrapper: { animationDuration: '0.3s' },
-  stepTitle: { fontSize: 16, fontWeight: '800', marginBottom: 14, letterSpacing: -0.3 },
+  stepTitle: { fontSize: 20, fontWeight: '800', marginBottom: 20, letterSpacing: 0 },
   fieldLabel: { fontSize: 12, fontWeight: '800', marginBottom: 6 },
   optionalBadge: { fontSize: 10, fontWeight: '500' },
   input: {
     borderWidth: 1,
-    borderRadius: 10,
-    padding: 12,
+    borderRadius: 3,
+    padding: 14,
     fontSize: 14,
-    marginBottom: 12,
+    marginBottom: 16,
   },
   gpsButton: {
     flexDirection: 'row',
-    borderRadius: 10,
+    borderRadius: 4,
     paddingVertical: 12,
     justifyContent: 'center',
     alignItems: 'center',
@@ -1464,14 +1568,14 @@ const styles = StyleSheet.create({
   categoryGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'space-between', marginBottom: 8 },
   categoryCard: {
     width: '48%',
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 10,
+    padding: 16,
     borderWidth: 1.5,
     alignItems: 'center',
     height: 94,
     justifyContent: 'center',
   },
-  categoryIconCircle: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E0F2FE', justifyContent: 'center', alignItems: 'center', marginBottom: 6 },
+  categoryIconCircle: { width: 38, height: 38, borderRadius: 19, backgroundColor: '#123452', justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   categoryCardLabel: { fontSize: 11, fontWeight: '700', textAlign: 'center' },
 
   textAreaContainer: { position: 'relative' },
@@ -1498,7 +1602,7 @@ const styles = StyleSheet.create({
   chip: { borderWidth: 1, borderRadius: 20, paddingHorizontal: 14, paddingVertical: 8 },
   chipText: { fontSize: 11, fontWeight: '700' },
 
-  wizardFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 20, borderTopWidth: 1, borderTopColor: '#F1F5F9', paddingTop: 14 },
+  wizardFooter: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 26, borderTopWidth: 1, borderTopColor: '#23415E', paddingTop: 18 },
   backBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 16, borderRadius: 8 },
   backBtnText: { fontWeight: '700', fontSize: 13 },
   nextBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 18, borderRadius: 8 },
@@ -1646,6 +1750,6 @@ const styles = StyleSheet.create({
   swotCardTitleText: { fontSize: 13, fontWeight: '900', color: '#1E293B', marginBottom: 6 },
   swotCardItemText: { fontSize: 11, color: '#334155', marginBottom: 2, lineHeight: 16 },
 
-  downloadDprButton: { borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 10 },
+  downloadDprButton: { borderRadius: 4, paddingVertical: 16, alignItems: 'center', marginTop: 10, backgroundColor: '#D946EF' },
   downloadDprButtonText: { color: '#FFFFFF', fontWeight: '900', fontSize: 15 },
 });

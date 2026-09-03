@@ -259,13 +259,16 @@ async def make_ollama_summary(assessment_input: AssessmentInput, assessment: Dic
         return {"enabled": False, "summary": "Ollama endpoint is not configured."}
 
     prompt = (
-        "You are a rural enterprise finance advisor. Write a concise executive summary in "
+        "You are a rural enterprise finance advisor. Return valid JSON only with exactly two keys: "
+        "summary (a concise practical executive summary string) and swot (an object with arrays named "
+        "strengths, weaknesses, opportunities, and threats). "
+        "Write all values in "
         f"{assessment_input.target_language or 'en'} for a business in {assessment_input.village}, "
         f"{assessment_input.block}, {assessment_input.district}. Business: {assessment_input.business_category}. "
         f"Project cost: ₹{assessment['financials']['project_cost']:,.0f}. Loan: ₹{assessment['financials']['loan_amount']:,.0f}. "
         f"Selected scheme: {assessment['scheme']['scheme_name']}. "
         f"Feasibility: {assessment['feasibility_report']['market_reach']['consumer_catchment_summary']}. "
-        "Keep it short, practical, and actionable."
+        "Keep the summary short, practical, and actionable. Give 3 specific items per SWOT array."
     )
 
     try:
@@ -279,7 +282,19 @@ async def make_ollama_summary(assessment_input: AssessmentInput, assessment: Dic
             text = (payload.get("response") or "").strip()
             if not text:
                 return {"enabled": False, "summary": "Ollama returned an empty response."}
-            return {"enabled": True, "summary": text, "model": DEFAULT_MODELS[0]}
+            parsed_text = text.removeprefix("```json").removesuffix("```").strip()
+            parsed = json.loads(parsed_text)
+            swot = parsed.get("swot") or {}
+            valid_swot = {
+                key: [str(item) for item in swot.get(key, [])[:3]]
+                for key in ("strengths", "weaknesses", "opportunities", "threats")
+            }
+            return {
+                "enabled": True,
+                "summary": str(parsed.get("summary") or "AI summary generated."),
+                "swot": valid_swot,
+                "model": DEFAULT_MODELS[0],
+            }
     except Exception as exc:
         return {"enabled": False, "summary": "Ollama narrative not available; using deterministic rule engine output.", "error": str(exc)}
 
@@ -533,6 +548,9 @@ async def assess_enterprise(assessment_input: AssessmentInput) -> Dict[str, Any]
         "scheme": {**scheme, "loan_amount": loan_principal},
         "feasibility_report": feasibility_report,
     })
+    ai_swot = narrative.get("swot") if narrative.get("enabled") else None
+    if ai_swot and all(ai_swot.get(key) for key in ("strengths", "weaknesses", "opportunities", "threats")):
+        feasibility_report["business_analysis"] = ai_swot
 
     return {
         "assessment_input": assessment_input.model_dump(),
