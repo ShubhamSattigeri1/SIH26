@@ -490,6 +490,12 @@ function GramAdvisoryApp() {
   const [result, setResult] = useState(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [showAllSchedule, setShowAllSchedule] = useState(false);
+  const [transactions, setTransactions] = useState([]);
+  const [financeSummary, setFinanceSummary] = useState(null);
+  const [itrData, setItrData] = useState(null);
+  const [schemeData, setSchemeData] = useState(null);
+  const [aiStatus, setAiStatus] = useState(null);
+  const [transactionForm, setTransactionForm] = useState({ transaction_type: 'income', category: '', description: '', amount: '', payment_method: 'UPI', payment_status: 'paid', invoice_number: '', counterparty: '' });
   
   // Slide-in auto-dismissing Toast Notification system (Screen 1 Feature)
   const [toast, setToast] = useState({ visible: false, message: '', type: 'success' });
@@ -526,7 +532,43 @@ function GramAdvisoryApp() {
     })();
   }, []);
 
+  useEffect(() => {
+    fetch('http://localhost:8002/ai-status')
+      .then((response) => response.json())
+      .then(setAiStatus)
+      .catch(() => setAiStatus({ provider: 'groq', configured: false }));
+  }, []);
+
   const updateField = (key, value) => setForm((prev) => ({ ...prev, [key]: value }));
+  const updateTransaction = (key, value) => setTransactionForm((prev) => ({ ...prev, [key]: value }));
+
+  const refreshFinance = async () => {
+    try {
+      const [transactionsResponse, itrResponse] = await Promise.all([fetch('http://localhost:8002/transactions'), fetch('http://localhost:8002/itr-preparation')]);
+      const transactionData = await transactionsResponse.json();
+      setTransactions(transactionData.transactions || []);
+      setFinanceSummary(transactionData.summary || null);
+      setItrData(await itrResponse.json());
+    } catch (error) {
+      triggerToast('Finance ledger is unavailable. Start the FastAPI server.', 'error');
+    }
+  };
+
+  const handleAddTransaction = async () => {
+    if (!transactionForm.category || !transactionForm.amount) {
+      triggerToast('Add a category and amount before recording.', 'error');
+      return;
+    }
+    try {
+      const response = await fetch('http://localhost:8002/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...transactionForm, amount: Number(transactionForm.amount) }) });
+      if (!response.ok) throw new Error('Transaction could not be saved');
+      setTransactionForm({ transaction_type: 'income', category: '', description: '', amount: '', payment_method: 'UPI', payment_status: 'paid', invoice_number: '', counterparty: '' });
+      await refreshFinance();
+      triggerToast('Transaction recorded in the ledger.', 'success');
+    } catch (error) {
+      triggerToast(error.message, 'error');
+    }
+  };
 
   const handleGetLocation = async () => {
     try {
@@ -575,7 +617,10 @@ function GramAdvisoryApp() {
 
       const calculated = await response.json();
       setResult(calculated);
-      triggerToast(lang === 'en' ? '⚡ Report Analysis Complete' : '⚡ रिपोर्ट व्यवहार्यता विश्लेषण पूर्ण', 'success');
+      const aiEnabled = calculated.narrative?.enabled;
+      triggerToast(aiEnabled ? `Groq AI active: ${calculated.narrative.model}` : calculated.narrative?.summary || 'Groq unavailable; deterministic analysis used.', aiEnabled ? 'success' : 'info');
+      refreshFinance();
+      fetch('http://localhost:8002/scheme-recommendations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then((schemeResponse) => schemeResponse.json()).then(setSchemeData).catch(() => setSchemeData(null));
     } catch (error) {
       try {
         const calculated = calculateReport(form);
@@ -600,7 +645,7 @@ function GramAdvisoryApp() {
       available_margin_capital: Number(form.capital),
       latitude: Number(form.latitude),
       longitude: Number(form.longitude),
-      target_language: form.language,
+      target_language: lang,
       shop_act_number: form.shopActNumber,
       registered_business_name: form.businessName,
       business_description: form.businessDescription,
@@ -702,6 +747,9 @@ function GramAdvisoryApp() {
   const repayment = roadmap?.emi_moratorium_generator || {};
   const swot = feasibility.business_analysis || {};
   const swotTypes = ['Strengths', 'Weaknesses', 'Opportunities', 'Threats'];
+  const huffModel = result?.spatial_summary?.huff_model || {};
+  const monthlyFinance = financeSummary?.monthly || [];
+  const maxMonthlyValue = Math.max(1, ...monthlyFinance.flatMap((entry) => [entry.revenue, entry.expenses]));
 
   return (
     <SafeAreaView style={styles.safeArea}>
@@ -974,6 +1022,113 @@ function GramAdvisoryApp() {
             ========================================== */}
         {result && !loading && (
           <>
+            <View style={[styles.uspSection, { backgroundColor: activeTheme.surface, borderColor: activeTheme.border }]}> 
+              <View style={styles.uspHeaderRow}>
+                <View>
+                  <Text style={[styles.uspEyebrow, { color: activeTheme.secondary }]}>SYSTEM CAPABILITIES</Text>
+                  <Text style={[styles.uspTitle, { color: activeTheme.textPrimary }]}>Three decisions, backed by working engines</Text>
+                </View>
+                <Feather name="cpu" size={20} color={activeTheme.primary} />
+              </View>
+              <View style={styles.uspGrid}>
+                <View style={[styles.uspItem, { borderColor: activeTheme.border, backgroundColor: activeTheme.background }]}>
+                  <Feather name="file-text" size={17} color={activeTheme.secondary} />
+                  <Text style={[styles.uspItemTitle, { color: activeTheme.textPrimary }]}>Bank-ready DPR</Text>
+                  <Text style={[styles.uspItemText, { color: activeTheme.textSecondary }]}>Generates the assessment, financial structure, scheme logic, SWOT, and repayment schedule as a downloadable PDF.</Text>
+                  <TouchableOpacity style={[styles.uspAction, { borderColor: activeTheme.secondary }]} onPress={handleDownloadPdf}>
+                    <Text style={[styles.uspActionText, { color: activeTheme.secondary }]}>{pdfLoading ? 'BUILDING PDF...' : 'GENERATE DPR'}</Text>
+                    <Feather name="download" size={13} color={activeTheme.secondary} />
+                  </TouchableOpacity>
+                </View>
+                <View style={[styles.uspItem, { borderColor: activeTheme.border, backgroundColor: activeTheme.background }]}>
+                  <Feather name="radio" size={17} color={activeTheme.primary} />
+                  <Text style={[styles.uspItemTitle, { color: activeTheme.textPrimary }]}>Live OSM + Huff scoring</Text>
+                  <Text style={[styles.uspItemText, { color: activeTheme.textSecondary }]}>Uses nearby OpenStreetMap locations and distance-weighted Huff probabilities for this location.</Text>
+                  <View style={styles.uspMetricRow}>
+                    <Text style={[styles.uspMetric, { color: activeTheme.primary }]}>{huffModel.market_fit_score ?? 0}% fit</Text>
+                    <Text style={[styles.uspMetricMeta, { color: activeTheme.textMuted }]}>{huffModel.evaluated_locations ?? 0} OSM locations</Text>
+                  </View>
+                </View>
+                <View style={[styles.uspItem, { borderColor: activeTheme.border, backgroundColor: activeTheme.background }]}>
+                  <Feather name="sliders" size={17} color={activeTheme.success} />
+                  <Text style={[styles.uspItemTitle, { color: activeTheme.textPrimary }]}>Scheme-accurate routing</Text>
+                  <Text style={[styles.uspItemText, { color: activeTheme.textSecondary }]}>Rule-based 10% equity and 90% loan math. No AI is used to choose the scheme, rate, or moratorium.</Text>
+                  <View style={styles.uspMetricRow}>
+                    <Text style={[styles.uspMetric, { color: activeTheme.success }]}>{scheme.selected_scheme || 'Pending'}</Text>
+                    <Text style={[styles.uspMetricMeta, { color: activeTheme.textMuted }]}>{scheme.interest_rate_pa ?? 0}% / {scheme.moratorium_months ?? 0} mo</Text>
+                  </View>
+                </View>
+              </View>
+            </View>
+
+            <View style={[styles.aiStatusBar, { borderColor: activeTheme.border, backgroundColor: activeTheme.surface }]}> 
+              <View style={[styles.aiStatusDot, { backgroundColor: result.narrative?.enabled ? activeTheme.success : activeTheme.warning }]} />
+              <Text style={[styles.aiStatusText, { color: activeTheme.textSecondary }]}>{result.narrative?.enabled ? `GROQ AI ACTIVE // ${result.narrative.model}` : `GROQ FALLBACK // ${result.narrative?.summary || 'Check backend configuration'}`}</Text>
+              <Text style={[styles.aiStatusText, { color: activeTheme.textMuted }]}>{aiStatus?.configured ? 'KEY DETECTED' : 'KEY NOT DETECTED'}</Text>
+            </View>
+
+            <View style={[styles.financeSection, { backgroundColor: activeTheme.surface, borderColor: activeTheme.border }]}> 
+              <View style={styles.uspHeaderRow}>
+                <View>
+                  <Text style={[styles.uspEyebrow, { color: activeTheme.success }]}>FINANCE OPERATIONS</Text>
+                  <Text style={[styles.uspTitle, { color: activeTheme.textPrimary }]}>Record once. Understand the business.</Text>
+                </View>
+                <Feather name="bar-chart-2" size={20} color={activeTheme.success} />
+              </View>
+              <Text style={[styles.financeHint, { color: activeTheme.textSecondary }]}>Profit uses recorded income and expenses. Unpaid invoices count as revenue, but not as cash received.</Text>
+              <View style={styles.transactionTypeRow}>
+                {['income', 'expense'].map((type) => (
+                  <TouchableOpacity key={type} style={[styles.transactionTypeButton, { borderColor: activeTheme.border }, transactionForm.transaction_type === type && { backgroundColor: type === 'income' ? activeTheme.success : activeTheme.secondary, borderColor: type === 'income' ? activeTheme.success : activeTheme.secondary }]} onPress={() => updateTransaction('transaction_type', type)}>
+                    <Text style={[styles.transactionTypeText, { color: transactionForm.transaction_type === type ? '#05070D' : activeTheme.textSecondary }]}>{type.toUpperCase()}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <View style={styles.transactionInputGrid}>
+                {[
+                  ['category', 'Category (e.g. Milk sales)'], ['amount', 'Amount'], ['description', 'Description'], ['invoice_number', 'Invoice number'], ['counterparty', 'Customer / vendor'],
+                ].map(([key, placeholder]) => (
+                  <TextInput key={key} style={[styles.transactionInput, { color: activeTheme.textPrimary, borderColor: activeTheme.border, backgroundColor: activeTheme.background }]} value={transactionForm[key]} onChangeText={(value) => updateTransaction(key, value)} placeholder={placeholder} placeholderTextColor={activeTheme.textMuted} keyboardType={key === 'amount' ? 'numeric' : 'default'} />
+                ))}
+              </View>
+              <View style={styles.transactionTypeRow}>
+                {['UPI', 'Cash', 'Bank', 'Card'].map((method) => (
+                  <TouchableOpacity key={method} style={[styles.methodButton, { borderColor: activeTheme.border, backgroundColor: transactionForm.payment_method === method ? activeTheme.primaryLight : activeTheme.background }]} onPress={() => updateTransaction('payment_method', method)}>
+                    <Text style={[styles.methodText, { color: transactionForm.payment_method === method ? activeTheme.primary : activeTheme.textMuted }]}>{method}</Text>
+                  </TouchableOpacity>
+                ))}
+                {['paid', 'unpaid'].map((status) => (
+                  <TouchableOpacity key={status} style={[styles.methodButton, { borderColor: activeTheme.border, backgroundColor: transactionForm.payment_status === status ? activeTheme.accentLight : activeTheme.background }]} onPress={() => updateTransaction('payment_status', status)}>
+                    <Text style={[styles.methodText, { color: transactionForm.payment_status === status ? activeTheme.accent : activeTheme.textMuted }]}>{status}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+              <TouchableOpacity style={[styles.recordButton, { backgroundColor: activeTheme.primary }]} onPress={handleAddTransaction}><Feather name="plus-circle" size={15} color="#05070D" /><Text style={styles.recordButtonText}>RECORD TRANSACTION</Text></TouchableOpacity>
+
+              {financeSummary && <View style={styles.financeMetrics}>
+                {[['Revenue', financeSummary.revenue, activeTheme.primary], ['Expenses', financeSummary.total_expenses, activeTheme.secondary], ['Net profit', financeSummary.net_profit, activeTheme.success], ['Cash received', financeSummary.cash_received, activeTheme.accent]].map(([label, value, color]) => <View key={label} style={[styles.financeMetric, { borderColor: activeTheme.border, backgroundColor: activeTheme.background }]}><Text style={[styles.financeMetricLabel, { color: activeTheme.textMuted }]}>{label}</Text><Text style={[styles.financeMetricValue, { color }]}>{formatMoney(value)}</Text></View>)}
+              </View>}
+              <View style={[styles.profitChart, { borderColor: activeTheme.border, backgroundColor: activeTheme.background }]}>
+                <Text style={[styles.chartTitle, { color: activeTheme.textPrimary }]}>Monthly profit and loss</Text>
+                {monthlyFinance.length ? monthlyFinance.map((entry) => <View key={entry.month} style={styles.chartRow}><Text style={[styles.chartMonth, { color: activeTheme.textMuted }]}>{entry.month}</Text><View style={styles.chartBars}><View style={[styles.profitBar, { width: `${Math.max(3, entry.revenue / maxMonthlyValue * 100)}%`, backgroundColor: activeTheme.success }]} /><View style={[styles.lossBar, { width: `${Math.max(3, entry.expenses / maxMonthlyValue * 100)}%`, backgroundColor: activeTheme.secondary }]} /></View><Text style={[styles.chartProfit, { color: entry.profit >= 0 ? activeTheme.success : activeTheme.secondary }]}>{formatMoney(entry.profit)}</Text></View>) : <Text style={[styles.financeHint, { color: activeTheme.textMuted }]}>Record transactions to build the graph.</Text>}
+                <Text style={[styles.chartLegendText, { color: activeTheme.textMuted }]}>Green = income   Pink = expenses   Net = income - expenses</Text>
+              </View>
+            </View>
+
+            <View style={styles.utilityGrid}>
+              <View style={[styles.utilityPanel, { backgroundColor: activeTheme.surface, borderColor: activeTheme.border }]}>
+                <Text style={[styles.uspEyebrow, { color: activeTheme.secondary }]}>ITR PREPARATION</Text>
+                <Text style={[styles.utilityTitle, { color: activeTheme.textPrimary }]}>Tax-ready review pack</Text>
+                <Text style={[styles.financeHint, { color: activeTheme.textSecondary }]}>{itrData?.disclaimer || 'Record transactions to prepare a reviewable ITR data pack.'}</Text>
+                {itrData && <><Text style={[styles.utilityValue, { color: activeTheme.success }]}>Estimated business profit: {formatMoney(itrData.summary.net_profit)}</Text><Text style={[styles.utilityWarning, { color: activeTheme.warning }]}>{itrData.missing_record_warnings.length ? `Missing: ${itrData.missing_record_warnings.join(', ')}` : 'Core invoice fields are present.'}</Text></>}
+              </View>
+              <View style={[styles.utilityPanel, { backgroundColor: activeTheme.surface, borderColor: activeTheme.border }]}>
+                <Text style={[styles.uspEyebrow, { color: activeTheme.primary }]}>GOVERNMENT SCHEMES</Text>
+                <Text style={[styles.utilityTitle, { color: activeTheme.textPrimary }]}>Suitable schemes to review</Text>
+                {(schemeData?.recommendations || []).map((schemeItem) => <View key={schemeItem.name} style={styles.schemeRow}><Text style={[styles.schemeName, { color: activeTheme.primary }]}>{schemeItem.name}</Text><Text style={[styles.schemeReason, { color: activeTheme.textSecondary }]}>{schemeItem.reason}</Text><Text style={[styles.schemeSource, { color: activeTheme.textMuted }]}>{schemeItem.source}</Text></View>)}
+                <Text style={[styles.financeHint, { color: activeTheme.warning }]}>{schemeData?.disclaimer || 'Run an assessment to load category-matched schemes.'}</Text>
+              </View>
+            </View>
+
             {/* SCREEN 2: REPORT HEADER HERO CARD (NEW) */}
             <View style={[styles.summaryCard, { backgroundColor: activeTheme.surface, borderColor: activeTheme.border, shadowColor: activeTheme.shadow }]}>
               <View style={styles.summaryTopRow}>
@@ -1653,6 +1808,55 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
   },
+  uspSection: { borderRadius: 6, padding: 16, marginBottom: 16, borderWidth: 1 },
+  uspHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 },
+  uspEyebrow: { fontSize: 9, fontWeight: '900', letterSpacing: 1.8 },
+  uspTitle: { fontSize: 17, fontWeight: '900', marginTop: 5 },
+  uspGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  uspItem: { flex: 1, minWidth: 220, borderRadius: 4, borderWidth: 1, padding: 13 },
+  uspItemTitle: { fontSize: 13, fontWeight: '900', marginTop: 9 },
+  uspItemText: { fontSize: 11, lineHeight: 16, marginTop: 6, minHeight: 50 },
+  uspAction: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderWidth: 1, borderRadius: 3, paddingHorizontal: 9, paddingVertical: 8, marginTop: 10 },
+  uspActionText: { fontSize: 9, fontWeight: '900', letterSpacing: 0.8 },
+  uspMetricRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', gap: 8, marginTop: 11 },
+  uspMetric: { fontSize: 15, fontWeight: '900', flexShrink: 1 },
+  uspMetricMeta: { fontSize: 9, fontWeight: '700', textAlign: 'right' },
+  aiStatusBar: { flexDirection: 'row', alignItems: 'center', gap: 8, borderWidth: 1, borderRadius: 4, paddingHorizontal: 11, paddingVertical: 9, marginBottom: 16 },
+  aiStatusDot: { width: 8, height: 8, borderRadius: 4 },
+  aiStatusText: { flex: 1, fontSize: 9, fontWeight: '800', letterSpacing: 0.5 },
+  financeSection: { borderRadius: 6, padding: 16, marginBottom: 16, borderWidth: 1 },
+  financeHint: { fontSize: 11, lineHeight: 16, marginBottom: 10 },
+  transactionTypeRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7, marginBottom: 10 },
+  transactionTypeButton: { flex: 1, minWidth: 100, borderWidth: 1, borderRadius: 3, paddingVertical: 9, alignItems: 'center' },
+  transactionTypeText: { fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  transactionInputGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  transactionInput: { flex: 1, minWidth: 180, borderWidth: 1, borderRadius: 3, paddingHorizontal: 11, paddingVertical: 10, fontSize: 12 },
+  methodButton: { borderWidth: 1, borderRadius: 3, paddingHorizontal: 10, paddingVertical: 7 },
+  methodText: { fontSize: 10, fontWeight: '800' },
+  recordButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, borderRadius: 3, paddingVertical: 11, marginTop: 2 },
+  recordButtonText: { color: '#05070D', fontSize: 10, fontWeight: '900', letterSpacing: 0.8 },
+  financeMetrics: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 14 },
+  financeMetric: { flex: 1, minWidth: 125, borderWidth: 1, borderRadius: 3, padding: 10 },
+  financeMetricLabel: { fontSize: 9, fontWeight: '800', textTransform: 'uppercase' },
+  financeMetricValue: { fontSize: 16, fontWeight: '900', marginTop: 5 },
+  profitChart: { borderWidth: 1, borderRadius: 3, padding: 12, marginTop: 12 },
+  chartTitle: { fontSize: 12, fontWeight: '900', marginBottom: 10 },
+  chartRow: { flexDirection: 'row', alignItems: 'center', gap: 7, marginBottom: 7 },
+  chartMonth: { width: 52, fontSize: 9, fontWeight: '800' },
+  chartBars: { flex: 1, gap: 2 },
+  profitBar: { height: 5, borderRadius: 2 },
+  lossBar: { height: 5, borderRadius: 2 },
+  chartProfit: { width: 76, fontSize: 10, fontWeight: '900', textAlign: 'right' },
+  chartLegendText: { fontSize: 9, marginTop: 8 },
+  utilityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 16 },
+  utilityPanel: { flex: 1, minWidth: 280, borderRadius: 6, borderWidth: 1, padding: 16 },
+  utilityTitle: { fontSize: 16, fontWeight: '900', marginTop: 5, marginBottom: 7 },
+  utilityValue: { fontSize: 12, fontWeight: '900', marginTop: 8 },
+  utilityWarning: { fontSize: 10, lineHeight: 15, marginTop: 7 },
+  schemeRow: { borderLeftWidth: 2, borderLeftColor: '#22D3EE', paddingLeft: 9, marginBottom: 10 },
+  schemeName: { fontSize: 12, fontWeight: '900' },
+  schemeReason: { fontSize: 10, lineHeight: 15, marginTop: 2 },
+  schemeSource: { fontSize: 9, marginTop: 3 },
   sectionHeaderTitle: { fontSize: 15, fontWeight: '800', marginBottom: 12 },
   statCardRow: {
     flexDirection: 'row',

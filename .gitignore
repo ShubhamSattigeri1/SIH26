@@ -2,6 +2,7 @@
 node_modules/
 venv/
 env/
+transactions.csv
 
 # Build & Bundles
 .expo/
@@ -18,3 +19,7 @@ __pycache__/
 Thumbs.db
 .vscode/
 .idea/
+
+.env
+.env.example
+

@@ -7,11 +7,13 @@ import math
 import os
 import uuid
 import csv
+from pathlib import Path
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
@@ -22,9 +24,16 @@ from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
 
 
-OLLAMA_ENDPOINT = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434/api/generate")
-DEFAULT_MODELS = ["llama3.1:8b", "llama3.2", "mistral", "qwen2.5"]
+load_dotenv(dotenv_path=Path(__file__).with_name(".env"), override=False)
+GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
+GROQ_ENDPOINT = os.getenv("GROQ_ENDPOINT", "https://api.groq.com/openai/v1/chat/completions")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
 DATASET_PATH = "pune_dairy_dataset.csv"
+TRANSACTIONS_PATH = os.getenv("TRANSACTIONS_PATH", "transactions.csv")
+TRANSACTION_FIELDS = [
+    "id", "date", "transaction_type", "category", "description", "amount",
+    "payment_method", "payment_status", "invoice_number", "counterparty",
+]
 
 class AssessmentInput(BaseModel):
     village: str
@@ -45,6 +54,84 @@ class AssessmentInput(BaseModel):
     @classmethod
     def normalize_language(cls, value: str) -> str:
         return value.strip().lower() or "en"
+
+
+class TransactionInput(BaseModel):
+    date: str = Field(default_factory=lambda: datetime.now(timezone.utc).date().isoformat())
+    transaction_type: str
+    category: str
+    description: str = ""
+    amount: float = Field(..., gt=0)
+    payment_method: str
+    payment_status: str = "paid"
+    invoice_number: str = ""
+    counterparty: str = ""
+
+    @field_validator("transaction_type")
+    @classmethod
+    def validate_transaction_type(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"income", "expense"}:
+            raise ValueError("transaction_type must be income or expense")
+        return normalized
+
+    @field_validator("payment_status")
+    @classmethod
+    def validate_payment_status(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if normalized not in {"paid", "unpaid", "partial"}:
+            raise ValueError("payment_status must be paid, unpaid, or partial")
+        return normalized
+
+
+def read_transactions() -> List[Dict[str, Any]]:
+    if not os.path.exists(TRANSACTIONS_PATH):
+        return []
+    try:
+        with open(TRANSACTIONS_PATH, newline="", encoding="utf-8") as file:
+            return list(csv.DictReader(file))
+    except (OSError, csv.Error):
+        return []
+
+
+def append_transaction(transaction: TransactionInput) -> Dict[str, Any]:
+    exists = os.path.exists(TRANSACTIONS_PATH)
+    record = {"id": uuid.uuid4().hex[:12], **transaction.model_dump()}
+    with open(TRANSACTIONS_PATH, "a", newline="", encoding="utf-8") as file:
+        writer = csv.DictWriter(file, fieldnames=TRANSACTION_FIELDS)
+        if not exists or os.path.getsize(TRANSACTIONS_PATH) == 0:
+            writer.writeheader()
+        writer.writerow(record)
+    return record
+
+
+def summarize_transactions(transactions: List[Dict[str, Any]]) -> Dict[str, Any]:
+    direct_cost_categories = {"raw materials", "inventory", "feed", "packaging", "direct costs"}
+    revenue = sum(safe_float(row.get("amount")) for row in transactions if row.get("transaction_type") == "income")
+    direct_costs = sum(safe_float(row.get("amount")) for row in transactions if row.get("transaction_type") == "expense" and row.get("category", "").strip().lower() in direct_cost_categories)
+    expenses = sum(safe_float(row.get("amount")) for row in transactions if row.get("transaction_type") == "expense")
+    cash_received = sum(safe_float(row.get("amount")) for row in transactions if row.get("transaction_type") == "income" and row.get("payment_status", "paid") == "paid")
+    cash_paid = sum(safe_float(row.get("amount")) for row in transactions if row.get("transaction_type") == "expense" and row.get("payment_status", "paid") == "paid")
+    monthly: Dict[str, Dict[str, float]] = {}
+    for row in transactions:
+        month = str(row.get("date", ""))[:7] or "undated"
+        bucket = monthly.setdefault(month, {"revenue": 0.0, "expenses": 0.0, "profit": 0.0})
+        amount = safe_float(row.get("amount"))
+        bucket["revenue" if row.get("transaction_type") == "income" else "expenses"] += amount
+        bucket["profit"] = bucket["revenue"] - bucket["expenses"]
+    return {
+        "transaction_count": len(transactions),
+        "revenue": round(revenue, 2),
+        "direct_costs": round(direct_costs, 2),
+        "total_expenses": round(expenses, 2),
+        "gross_profit": round(revenue - direct_costs, 2),
+        "net_profit": round(revenue - expenses, 2),
+        "cash_received": round(cash_received, 2),
+        "cash_paid": round(cash_paid, 2),
+        "outstanding_income": round(revenue - cash_received, 2),
+        "monthly": [{"month": month, **values} for month, values in sorted(monthly.items())],
+        "assumptions": ["Income is recognized from recorded income rows.", "Direct costs are categories: raw materials, inventory, feed, packaging, and direct costs.", "Unpaid invoices count toward revenue but not cash received."],
+    }
 
 
 class EnterpriseLocation(BaseModel):
@@ -254,9 +341,9 @@ def build_financial_roadmap(financials: Dict[str, Any], schedule: List[Dict[str,
     }
 
 
-async def make_ollama_summary(assessment_input: AssessmentInput, assessment: Dict[str, Any]) -> Dict[str, Any]:
-    if not OLLAMA_ENDPOINT:
-        return {"enabled": False, "summary": "Ollama endpoint is not configured."}
+async def make_ai_summary(assessment_input: AssessmentInput, assessment: Dict[str, Any]) -> Dict[str, Any]:
+    if not GROQ_API_KEY:
+        return {"enabled": False, "summary": "Groq API key is not configured."}
 
     prompt = (
         "You are a rural enterprise finance advisor. Return valid JSON only with exactly two keys: "
@@ -274,14 +361,23 @@ async def make_ollama_summary(assessment_input: AssessmentInput, assessment: Dic
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             response = await client.post(
-                OLLAMA_ENDPOINT,
-                json={"model": DEFAULT_MODELS[0], "prompt": prompt, "stream": False},
+                GROQ_ENDPOINT,
+                headers={"Authorization": f"Bearer {GROQ_API_KEY}", "Content-Type": "application/json"},
+                json={
+                    "model": GROQ_MODEL,
+                    "messages": [
+                        {"role": "system", "content": "Return only valid JSON. Do not use markdown fences."},
+                        {"role": "user", "content": prompt},
+                    ],
+                    "temperature": 0.2,
+                    "response_format": {"type": "json_object"},
+                },
             )
             response.raise_for_status()
             payload = response.json()
-            text = (payload.get("response") or "").strip()
+            text = (payload.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
             if not text:
-                return {"enabled": False, "summary": "Ollama returned an empty response."}
+                return {"enabled": False, "summary": "Groq returned an empty response."}
             parsed_text = text.removeprefix("```json").removesuffix("```").strip()
             parsed = json.loads(parsed_text)
             swot = parsed.get("swot") or {}
@@ -293,10 +389,17 @@ async def make_ollama_summary(assessment_input: AssessmentInput, assessment: Dic
                 "enabled": True,
                 "summary": str(parsed.get("summary") or "AI summary generated."),
                 "swot": valid_swot,
-                "model": DEFAULT_MODELS[0],
+                "model": GROQ_MODEL,
             }
+    except httpx.HTTPStatusError as exc:
+        provider_detail = exc.response.text[:300].replace(GROQ_API_KEY, "[redacted]")
+        return {
+            "enabled": False,
+            "summary": f"Groq request failed with HTTP {exc.response.status_code}; deterministic rule engine output used.",
+            "error": provider_detail or str(exc),
+        }
     except Exception as exc:
-        return {"enabled": False, "summary": "Ollama narrative not available; using deterministic rule engine output.", "error": str(exc)}
+        return {"enabled": False, "summary": "Groq narrative not available; using deterministic rule engine output.", "error": str(exc)}
 
 
 def load_local_dataset() -> List[Dict[str, Any]]:
@@ -399,6 +502,39 @@ def distance_decayed_saturation_score(nodes: List[Dict[str, Any]]) -> Dict[str, 
         "score": round(normalized, 2),
         "total_access": round(access_score, 4),
         "active_nodes": active_nodes,
+    }
+
+
+def huff_market_fit_score(nodes: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Estimate local market fit from OSM alternatives using Huff probabilities."""
+    if not nodes:
+        return {"market_fit_score": 0.0, "competitor_share": 0.0, "evaluated_locations": 0}
+
+    attractiveness = {
+        "supermarket": 5.0,
+        "marketplace": 4.5,
+        "dairy": 3.5,
+        "grocery": 3.0,
+        "general": 2.5,
+        "bakery": 2.5,
+        "shop": 2.0,
+    }
+    utilities = []
+    for node in nodes:
+        tags = node.get("tags", {}) or {}
+        node_type = next((value for key, value in tags.items() if key in ("shop", "amenity", "industrial", "craft")), "shop")
+        attractiveness_value = attractiveness.get(str(node_type).lower(), 2.0)
+        distance = max(float(node.get("distance_km", 0.05)), 0.05)
+        utilities.append(attractiveness_value / (distance ** 1.5))
+
+    total_utility = sum(utilities)
+    competitor_share = min(100.0, (max(utilities) / total_utility) * 100) if total_utility else 0.0
+    market_fit = max(0.0, min(100.0, 100.0 - competitor_share))
+    return {
+        "market_fit_score": round(market_fit, 2),
+        "competitor_share": round(competitor_share, 2),
+        "evaluated_locations": len(nodes),
+        "model": "Huff probability: attractiveness / distance^1.5",
     }
 
 
@@ -513,10 +649,12 @@ async def build_spatial_summary(assessment_input: AssessmentInput) -> Dict[str, 
             relevant.append(node)
 
     saturation = distance_decayed_saturation_score(relevant)
+    huff_score = huff_market_fit_score(relevant)
     return {
         "saturation_score": saturation["score"],
         "relevant_nodes": relevant,
         "distance_model": saturation,
+        "huff_model": huff_score,
     }
 
 
@@ -543,7 +681,7 @@ async def assess_enterprise(assessment_input: AssessmentInput) -> Dict[str, Any]
     )
     financial_roadmap = build_financial_roadmap(financials, schedule)
 
-    narrative = await make_ollama_summary(assessment_input, {
+    narrative = await make_ai_summary(assessment_input, {
         "financials": financials,
         "scheme": {**scheme, "loan_amount": loan_principal},
         "feasibility_report": feasibility_report,
@@ -567,6 +705,7 @@ async def assess_enterprise(assessment_input: AssessmentInput) -> Dict[str, Any]
         "spatial_summary": {
             "saturation_score": spatial_summary["saturation_score"],
             "nearby_relevant_nodes": len(spatial_summary["relevant_nodes"]),
+            "huff_model": spatial_summary["huff_model"],
         },
         "feasibility_report": feasibility_report,
         "financial_roadmap": financial_roadmap,
@@ -679,6 +818,63 @@ async def root() -> Dict[str, str]:
 @app.get("/health")
 async def health() -> Dict[str, str]:
     return {"status": "ok"}
+
+
+@app.get("/ai-status")
+async def ai_status() -> Dict[str, Any]:
+    return {
+        "provider": "groq",
+        "configured": bool(GROQ_API_KEY and not GROQ_API_KEY.startswith("your_")),
+        "model": GROQ_MODEL,
+        "endpoint": GROQ_ENDPOINT,
+    }
+
+
+SCHEME_CATALOG = [
+    {"name": "PMFME", "fit": ["Dairy", "Agro-Processing"], "reason": "Supports food processing and value-added products.", "source": "Ministry of Food Processing Industries", "verify": "Check current state subsidy and applicant eligibility."},
+    {"name": "MUDRA Shishu/Kishor", "fit": ["Dairy", "Retail/Kirana", "Textiles", "Poultry", "Agro-Processing"], "reason": "Micro-enterprise credit for eligible business expansion.", "source": "Pradhan Mantri MUDRA Yojana", "verify": "Confirm lender terms and current loan limits."},
+    {"name": "PMEGP", "fit": ["Dairy", "Retail/Kirana", "Textiles", "Poultry", "Agro-Processing"], "reason": "Credit-linked support for eligible new micro-enterprises.", "source": "KVIC / PMEGP guidelines", "verify": "Confirm new-unit, category, and project-cost rules."},
+]
+
+
+@app.post("/transactions")
+async def create_transaction(payload: TransactionInput) -> Dict[str, Any]:
+    return {"transaction": append_transaction(payload), "summary": summarize_transactions(read_transactions())}
+
+
+@app.get("/transactions")
+async def list_transactions() -> Dict[str, Any]:
+    transactions = read_transactions()
+    return {"transactions": transactions, "summary": summarize_transactions(transactions)}
+
+
+@app.get("/itr-preparation")
+async def itr_preparation() -> Dict[str, Any]:
+    transactions = read_transactions()
+    summary = summarize_transactions(transactions)
+    missing_fields = []
+    for row in transactions:
+        if not row.get("invoice_number"):
+            missing_fields.append("invoice number")
+        if not row.get("counterparty"):
+            missing_fields.append("customer/vendor")
+    return {
+        "status": "preparation_only",
+        "summary": summary,
+        "missing_record_warnings": sorted(set(missing_fields)),
+        "checklist": ["Review income and expense categories", "Match invoices and payment records", "Verify bank/UPI statements", "Have a qualified tax professional review before filing"],
+        "disclaimer": "This is a preparation aid, not an income-tax return and does not submit to any government portal.",
+    }
+
+
+@app.post("/scheme-recommendations")
+async def scheme_recommendations(payload: AssessmentInput) -> Dict[str, Any]:
+    matches = [scheme for scheme in SCHEME_CATALOG if payload.business_category in scheme["fit"]]
+    return {
+        "recommendations": matches,
+        "ai_explanation": "Recommendations are matched from the scheme catalog using business category. Groq explanation can be added when configured.",
+        "disclaimer": "Verify current eligibility, documents, subsidy, and lender terms with the official scheme source before applying.",
+    }
 
 
 @app.post("/assess")
