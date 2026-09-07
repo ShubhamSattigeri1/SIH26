@@ -8,6 +8,19 @@
 4. Start the backend: `python main.py`
 5. Start the Expo app: `npm run web`
 
+## Deployment
+
+Deploy the Python API and Expo web app as separate services:
+
+1. Deploy `main.py` to a Python host such as Render, Railway, or Fly.io. Use `uvicorn main:app --host 0.0.0.0 --port $PORT` as the start command when the host provides a `PORT` variable.
+2. Set `GROQ_API_KEY`, `GROQ_MODEL`, and `GROQ_ENDPOINT` in the backend host's environment. Do not expose `GROQ_API_KEY` as an `EXPO_PUBLIC_` variable.
+3. Confirm the backend responds at `https://your-api-host/health`. Its `/` endpoint intentionally returns a JSON service status response.
+4. Deploy this repository to Vercel. The included `vercel.json` runs `npm run export:web` and publishes the Expo output from `dist/`.
+5. Add this Vercel environment variable for Production: `EXPO_PUBLIC_API_URL=https://your-api-host`.
+6. Redeploy Vercel after setting the variable. The Vercel URL should show the GramAdvisory login screen, while the API host URL should show the JSON health response.
+
+The backend currently stores finance records in `transactions.csv`. Use persistent storage or a database before relying on those records in production, because local files on many hosted services are not durable.
+
 ## Finance Workspace
 
 After running an assessment, record each business transaction in the Finance Operations panel. Use one row per invoice or payment:

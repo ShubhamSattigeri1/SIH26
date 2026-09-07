@@ -7,7 +7,8 @@
     "start": "set EXPO_NO_CACHE=1&& expo start --clear",
     "android": "set EXPO_NO_CACHE=1&& expo start --android --clear",
     "ios": "set EXPO_NO_CACHE=1&& expo start --ios --clear",
-    "web": "set EXPO_NO_CACHE=1&& expo start --web --clear"
+    "web": "set EXPO_NO_CACHE=1&& expo start --web --clear",
+    "export:web": "expo export --platform web"
   },
   "dependencies": {
     "@expo/metro-runtime": "~3.2.3",

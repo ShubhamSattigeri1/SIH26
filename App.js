@@ -20,6 +20,9 @@ import { Video, ResizeMode } from 'expo-av';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import FinCompassDashboard from './FinCompassDashboard';
 
+const API_BASE_URL = (process.env.EXPO_PUBLIC_API_URL || 'http://localhost:8002').replace(/\/$/, '');
+const apiUrl = (path) => `${API_BASE_URL}${path}`;
+
 // ==========================================
 // 🎨 DESIGN TOKEN SYSTEM (THEME SYSTEM)
 // ==========================================
@@ -533,7 +536,7 @@ function GramAdvisoryApp() {
   }, []);
 
   useEffect(() => {
-    fetch('http://localhost:8002/ai-status')
+    fetch(apiUrl('/ai-status'))
       .then((response) => response.json())
       .then(setAiStatus)
       .catch(() => setAiStatus({ provider: 'groq', configured: false }));
@@ -544,7 +547,7 @@ function GramAdvisoryApp() {
 
   const refreshFinance = async () => {
     try {
-      const [transactionsResponse, itrResponse] = await Promise.all([fetch('http://localhost:8002/transactions'), fetch('http://localhost:8002/itr-preparation')]);
+      const [transactionsResponse, itrResponse] = await Promise.all([fetch(apiUrl('/transactions')), fetch(apiUrl('/itr-preparation'))]);
       const transactionData = await transactionsResponse.json();
       setTransactions(transactionData.transactions || []);
       setFinanceSummary(transactionData.summary || null);
@@ -560,7 +563,7 @@ function GramAdvisoryApp() {
       return;
     }
     try {
-      const response = await fetch('http://localhost:8002/transactions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...transactionForm, amount: Number(transactionForm.amount) }) });
+      const response = await fetch(apiUrl('/transactions'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...transactionForm, amount: Number(transactionForm.amount) }) });
       if (!response.ok) throw new Error('Transaction could not be saved');
       setTransactionForm({ transaction_type: 'income', category: '', description: '', amount: '', payment_method: 'UPI', payment_status: 'paid', invoice_number: '', counterparty: '' });
       await refreshFinance();
@@ -605,7 +608,7 @@ function GramAdvisoryApp() {
         business_description: form.businessDescription,
       };
 
-      const response = await fetch('http://localhost:8002/assess', {
+      const response = await fetch(apiUrl('/assess'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -620,7 +623,7 @@ function GramAdvisoryApp() {
       const aiEnabled = calculated.narrative?.enabled;
       triggerToast(aiEnabled ? `Groq AI active: ${calculated.narrative.model}` : calculated.narrative?.summary || 'Groq unavailable; deterministic analysis used.', aiEnabled ? 'success' : 'info');
       refreshFinance();
-      fetch('http://localhost:8002/scheme-recommendations', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then((schemeResponse) => schemeResponse.json()).then(setSchemeData).catch(() => setSchemeData(null));
+      fetch(apiUrl('/scheme-recommendations'), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) }).then((schemeResponse) => schemeResponse.json()).then(setSchemeData).catch(() => setSchemeData(null));
     } catch (error) {
       try {
         const calculated = calculateReport(form);
@@ -653,7 +656,7 @@ function GramAdvisoryApp() {
 
     try {
       if (Platform.OS === 'web') {
-        const response = await fetch('http://localhost:8002/generate-pdf', {
+        const response = await fetch(apiUrl('/generate-pdf'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload),
@@ -677,7 +680,7 @@ function GramAdvisoryApp() {
       }
 
       let downloaded = false;
-      const endpoints = ['http://127.0.0.1:8002', 'http://10.0.3.88:8002', 'http://localhost:8002'];
+      const endpoints = [API_BASE_URL];
       
       for (const endpoint of endpoints) {
         try {
