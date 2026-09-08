@@ -1,7 +1,8 @@
 {
+  "framework": "other",
+  "installCommand": "npm ci",
   "buildCommand": "npm run export:web",
   "outputDirectory": "dist",
-  "framework": null,
   "rewrites": [
     {
       "source": "/((?!_expo/|assets/).*)",
