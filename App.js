@@ -252,7 +252,19 @@ const calculateReport = (form) => {
     };
   }
 
-  const loanAmount = scheme.loan_cap > 0 ? Math.min(maximumLoan, scheme.loan_cap) : 0;
+  if (projectCost > 5000000) {
+    Alert.alert(
+      'Eligibility Limit',
+      'Project cost exceeds current scheme eligibility. Maximum project cost for pilot schemes is ₹50 Lakh.',
+      [{ text: 'OK', style: 'default' }]
+    );
+  }
+
+  const loanAmount = projectCost > 5000000
+    ? 0
+    : scheme.loan_cap > 0
+      ? Math.min(maximumLoan, scheme.loan_cap)
+      : 0;
   const workingCapital = projectCost * 0.25;
 
   const categoryMultiplier = {
